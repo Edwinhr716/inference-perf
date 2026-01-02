@@ -4,7 +4,7 @@ job:
     repository: quay.io/inference-perf/inference-perf
     tag: "" # Defaults to .Chart.AppVersion
   nodeSelector: {}
-  serviceAccountName: ""
+  serviceAccountName: "workload-identity-sa"
   # Example resources:
   # resources:
   #   requests:
@@ -13,7 +13,15 @@ job:
   #   limits:
   #     cpu: "2"
   #     memory: "8Gi"
-  resources: {}
+  resources:
+    requests:
+      cpu: "1"
+      memory: "64Gi"
+      ephemeral-storage: "240Gi"
+    limits:
+      cpu: "2"
+      memory: "64Gi"
+      ephemeral-storage: "240Gi"
 
 logLevel: INFO
 
@@ -37,34 +45,59 @@ s3Path: ""
 # If both specified, 'hfSecret' takes precedence over 'hfToken'.
 token:
   hfSecret:
-    name: "" # The name of the existing Secret (e.g., 'my-hf-secret').
-    key: ""  # The key within the Secret that holds the token value (e.g., 'token' or 'hf-token').
-  hfToken: ""
+    name: "llm-d-hf-token" # The name of the existing Secret (e.g., 'my-hf-secret').
+    key: "HF_TOKEN"  # The key within the Secret that holds the token value (e.g., 'token' or 'hf-token').
 
 config:
   load:
     type: constant
+    interval: 20
     stages:
-    - rate: 1
-      duration: 30
+      - rate: 1
+        duration: 120
+      - rate: 10
+        duration: 120
+      - rate: 25
+        duration: 120
+      - rate: 50
+        duration: 120
+      - rate: 100
+        duration: 120
+      - rate: 200
+        duration: 120
+    worker_max_concurrency: 1500
   api:
     type: completion
+    streaming: true
   server:
     type: vllm
-    base_url: http://0.0.0.0:8000
+    model_name: unsloth/gpt-oss-120b-BF16
+    base_url: http://35.209.55.248
     ignore_eos: true
   data:
-    type: shareGPT
+    type: shared_prefix
+    shared_prefix:
+      num_groups: 15
+      num_prompts_per_group: 6000
+      system_prompt_len: 7680
+      question_len: 256
+      output_len: 64
   metrics:
     type: prometheus
     prometheus:
-      url: http://localhost:9090
-      scrape_interval: 15
+      google_managed: true
   report:
     request_lifecycle:
       summary: true
       per_stage: true
-      per_request: false
+#      per_request: true
     prometheus:
       summary: true
-      per_stage: false
+      per_stage: true
+  storage:
+    local_storage:
+      path: llm-d-report-v2
+    google_cloud_storage:
+      bucket_name: edwinhernandez-llm-d-perf
+      path: llm-d-report-v2
+
